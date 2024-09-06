@@ -49,7 +49,7 @@ export function App() {
     <Flex direction="column" w={300} padding="5%">
       <Flex>
         <Text fontSize="md" fontWeight="bold">
-          RRWeb Recorder
+          Zemo Recorder
         </Text>
         <Spacer />
         <Stack direction="row">

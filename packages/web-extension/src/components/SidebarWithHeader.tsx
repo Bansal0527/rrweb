@@ -118,7 +118,7 @@ const SidebarContent = ({
             borderRadius="md"
             boxSize="2rem"
             src={Browser.runtime.getURL('icon128.png')}
-            alt="RRWeb Logo"
+            alt="Zemo Logo"
           />
         </Link>
         {title && (
