@@ -108,8 +108,9 @@ export function App() {
                         [LocalDataKey.recorderStatus]: status,
                       });
                       if (res.session) {
+                        console.debug('stop recording clicked:', res);
                         setNewSession(res.session);
-                        await saveSession(res.session, res.events).catch(
+                        await saveSession(res.session, res.events, res.audioChunks).catch(
                           (e) => {
                             setErrorMessage((e as { message: string }).message);
                           },

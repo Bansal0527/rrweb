@@ -7,10 +7,16 @@ import type { Session } from '~/types';
  */
 
 const EventStoreName = 'events';
+const AudioChunkStoreName = 'audioChunks';
 type EventData = {
   id: string;
   events: eventWithTime[];
 };
+
+type AudioChunkData = {
+    id: string;
+    audioChunks: Blob[];
+  };
 
 export async function getEventStore() {
   return openDB<EventData>(EventStoreName, 1, {
@@ -23,10 +29,27 @@ export async function getEventStore() {
   });
 }
 
+export async function getAudioChunkStore() {
+    return openDB<AudioChunkData>(AudioChunkStoreName, 1, {
+      upgrade(db) {
+        db.createObjectStore(AudioChunkStoreName, {
+          keyPath: 'id',
+          autoIncrement: false,
+        });
+      },
+    });
+  }
+
 export async function getEvents(id: string) {
   const db = await getEventStore();
   const data = (await db.get(EventStoreName, id)) as EventData;
   return data.events;
+}
+
+export async function getAudioChunks(id: string) {
+    const db = await getAudioChunkStore();
+    const data = (await db.get(AudioChunkStoreName, id)) as AudioChunkData;
+    return data.audioChunks;
 }
 
 const SessionStoreName = 'sessions';
@@ -44,9 +67,11 @@ export async function getSessionStore() {
   });
 }
 
-export async function saveSession(session: Session, events: eventWithTime[]) {
+export async function saveSession(session: Session, events: eventWithTime[], audioChunks: Blob[]) {
   const eventStore = await getEventStore();
   await eventStore.put(EventStoreName, { id: session.id, events });
+  const audioChunkStore = await getAudioChunkStore();
+  await audioChunkStore.put(AudioChunkStoreName, { id: session.id, audioChunks });
   const store = await getSessionStore();
   await store.add(SessionStoreName, session);
 }
@@ -64,17 +89,21 @@ export async function getAllSessions() {
 
 export async function deleteSession(id: string) {
   const eventStore = await getEventStore();
+  const audioChunkStore = await getAudioChunkStore();
   const sessionStore = await getSessionStore();
   await Promise.all([
     eventStore.delete(EventStoreName, id),
+    audioChunkStore.delete(AudioChunkStoreName, id),
     sessionStore.delete(SessionStoreName, id),
   ]);
 }
 
 export async function deleteSessions(ids: string[]) {
   const eventStore = await getEventStore();
+  const audioChunkStore = await getAudioChunkStore();
   const sessionStore = await getSessionStore();
   const eventTransition = eventStore.transaction(EventStoreName, 'readwrite');
+  const audioChunkTransition = audioChunkStore.transaction(AudioChunkStoreName, 'readwrite');
   const sessionTransition = sessionStore.transaction(
     SessionStoreName,
     'readwrite',
@@ -82,18 +111,20 @@ export async function deleteSessions(ids: string[]) {
   const promises = [];
   for (const id of ids) {
     promises.push(eventTransition.store.delete(id));
+    promises.push(audioChunkTransition.store.delete(id));
     promises.push(sessionTransition.store.delete(id));
   }
   await Promise.all(promises).then(() => {
-    return Promise.all([eventTransition.done, sessionTransition.done]);
+    return Promise.all([eventTransition.done, audioChunkTransition.done, sessionTransition.done]);
   });
 }
 
 export async function downloadSessions(ids: string[]) {
   for (const sessionId of ids) {
     const events = await getEvents(sessionId);
+    const audioChunks = await getAudioChunks(sessionId);
     const session = await getSession(sessionId);
-    const blob = new Blob([JSON.stringify({ session, events }, null, 2)], {
+    const blob = new Blob([JSON.stringify({ session, events, audioChunks }, null, 2)], {
       type: 'application/json',
     });
 

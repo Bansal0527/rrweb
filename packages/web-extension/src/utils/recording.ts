@@ -45,6 +45,7 @@ export async function pauseRecording(
   return {
     status: statusData,
     bufferedEvents: stopResponse.events,
+    bufferedAudioChunks: stopResponse.audioChunks
   };
 }
 
@@ -54,6 +55,7 @@ export async function resumeRecording(
   newTabId: number,
   status?: LocalData[LocalDataKey.recorderStatus],
   bufferedEvents?: eventWithTime[],
+  bufferedAudioChunks?: Blob[]
 ) {
   if (!status)
     status = (await Browser.storage.local.get(LocalDataKey.recorderStatus))[
@@ -65,13 +67,19 @@ export async function resumeRecording(
         LocalDataKey.bufferedEvents,
       )) as LocalData
     )[LocalDataKey.bufferedEvents];
+  if (!bufferedAudioChunks)
+    bufferedAudioChunks = (
+        (await Browser.storage.local.get(
+        LocalDataKey.bufferedAudioChunks,
+        )) as LocalData
+    )[LocalDataKey.bufferedAudioChunks];
   const { startTimestamp, pausedTimestamp } = status;
   // On Firefox, the new tab is not communicable immediately after it is created.
   if (isFirefox()) await new Promise((r) => setTimeout(r, 50));
   const startResponse = (await channel.requestToTab(
     newTabId,
     ServiceName.ResumeRecord,
-    { events: bufferedEvents, pausedTimestamp },
+    { events: bufferedEvents, audioChunks: bufferedAudioChunks, pausedTimestamp },
   )) as RecordStartedMessage;
   if (!startResponse) return;
   const pausedTime = pausedTimestamp

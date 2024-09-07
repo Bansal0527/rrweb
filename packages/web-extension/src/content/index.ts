@@ -11,6 +11,7 @@ import {
   type RecordStoppedMessage,
   MessageName,
   type EmitEventMessage,
+  type EmitAudioChunk,
 } from '~/types';
 import Channel from '~/utils/channel';
 import { isInCrossOriginIFrame } from '~/utils';
@@ -47,7 +48,9 @@ void (() => {
 
 async function initMainPage() {
   let bufferedEvents: eventWithTime[] = [];
+  let bufferedAudioChunks: Blob[] = [];
   let newEvents: eventWithTime[] = [];
+  let newAudioChunks: Blob[] = [];
   let startResponseCb: ((response: RecordStartedMessage) => void) | undefined =
     undefined;
   channel.provide(ServiceName.StartRecord, async () => {
@@ -59,11 +62,14 @@ async function initMainPage() {
     });
   });
   channel.provide(ServiceName.ResumeRecord, async (params) => {
-    const { events, pausedTimestamp } = params as {
+    const { events, audioChunks, pausedTimestamp } = params as {
       events: eventWithTime[];
+      audioChunks: Blob[];
       pausedTimestamp: number;
     };
     bufferedEvents = events;
+    bufferedAudioChunks = audioChunks;
+    // TODO implement pause?
     startRecord();
     return new Promise((resolve) => {
       startResponseCb = (response) => {
@@ -86,11 +92,14 @@ async function initMainPage() {
         const newSession = generateSession();
         response.session = newSession;
         bufferedEvents = [];
+        bufferedAudioChunks = []
         newEvents = [];
+        newAudioChunks = []
         resolve(response);
         // clear cache
         void Browser.storage.local.set({
           [LocalDataKey.bufferedEvents]: [],
+          [LocalDataKey.bufferedAudioChunks]: [],
         });
       };
     });
@@ -101,10 +110,13 @@ async function initMainPage() {
       stopResponseCb = (response: RecordStoppedMessage) => {
         stopResponseCb = undefined;
         bufferedEvents = [];
+        bufferedAudioChunks = []
         newEvents = [];
+        newAudioChunks = [];
         resolve(response);
         void Browser.storage.local.set({
           [LocalDataKey.bufferedEvents]: response.events,
+          [LocalDataKey.bufferedAudioChunks]: response.audioChunks,
         });
       };
     });
@@ -138,10 +150,17 @@ async function initMainPage() {
           ...data,
         };
         newData.events = bufferedEvents.concat(data.events);
+        newData.audioChunks = bufferedAudioChunks.concat(data.audioChunks);
+        // newData.events = bufferedEvents.concat(newEvents); // XXX experimenting
+        // newData.audioChunks = bufferedAudioChunks.concat(newAudioChunks);
+        console.debug('RecordStopped');
         stopResponseCb(newData);
-      } else if (event.data.message === MessageName.EmitEvent)
+      } else if (event.data.message === MessageName.EmitEvent) {
         newEvents.push((event.data as EmitEventMessage).event);
-    },
+      } else if (event.data.message === MessageName.EmitAudioChunk)
+        console.debug('EmitAudioChunk');
+        newAudioChunks.push((event.data as EmitAudioChunk).audioChunk);
+      }
   );
 
   const localData = (await Browser.storage.local.get()) as LocalData;
@@ -151,14 +170,17 @@ async function initMainPage() {
   ) {
     startRecord();
     bufferedEvents = localData[LocalDataKey.bufferedEvents] || [];
+    bufferedAudioChunks = localData[LocalDataKey.bufferedAudioChunks] || [];
   }
 
   // Before unload pages, cache the new events in the local storage.
   window.addEventListener('beforeunload', (event) => {
-    if (!newEvents.length) return;
+    if (!newEvents.length && !newAudioChunks.length) return;
     event.preventDefault();
+    console.debug('beforeunload called');
     void Browser.storage.local.set({
       [LocalDataKey.bufferedEvents]: bufferedEvents.concat(newEvents),
+      [LocalDataKey.bufferedAudioChunks]: bufferedAudioChunks.concat(newAudioChunks),
     });
   });
 }

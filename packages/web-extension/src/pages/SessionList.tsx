@@ -111,7 +111,7 @@ export function SessionList() {
       }),
       columnHelper.accessor((row) => row.recorderVersion, {
         cell: (info) => info.getValue(),
-        header: 'RRWEB Version',
+        header: 'Zemo Version',
       }),
     ],
     [],
