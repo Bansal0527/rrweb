@@ -38,7 +38,7 @@ void (async () => {
         let statusData = localData[LocalDataKey.recorderStatus];
         let { status } = statusData;
         let bufferedEvents: eventWithTime[] | undefined;
-        let bufferedAudioChunks: Blob[] | undefined;
+        let bufferedMediaChunks: Blob[] | undefined;
 
         if (status === RecorderStatus.RECORDING) {
           const result = await pauseRecording(
@@ -57,14 +57,14 @@ void (async () => {
             return {
               status: localData[LocalDataKey.recorderStatus],
               bufferedEvents,
-              bufferedAudioChunks
+              bufferedMediaChunks
             };
           });
           if (!result) return;
           statusData = result.status;
           status = statusData.status;
           bufferedEvents = result.bufferedEvents;
-          bufferedAudioChunks = result.bufferedAudioChunks;
+          bufferedMediaChunks = result.bufferedMediaChunks;
         }
         if (status === RecorderStatus.PausedSwitch)
           await resumeRecording(
@@ -72,7 +72,7 @@ void (async () => {
             activeInfo.tabId,
             statusData,
             bufferedEvents,
-            bufferedAudioChunks
+            bufferedMediaChunks
           );
       })
       .catch(() => {

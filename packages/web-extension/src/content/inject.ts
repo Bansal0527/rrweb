@@ -9,9 +9,10 @@ import { isInCrossOriginIFrame } from '~/utils';
  */
 
 const events: eventWithTime[] = [];
-const audioChunks: any[] = [];
-let audioRecorder: MediaRecorder | null = null;
-let audioStream: MediaStream | null = null;
+const mediaChunks: any[] = [];
+let mediaRecorder: MediaRecorder | null = null;
+let micStream: MediaStream | null = null;
+let screenStream: MediaStream | null = null;
 
 
 let stopFn: (() => void) | null = null;
@@ -25,28 +26,78 @@ function blobToDataURL(blob: Blob) {
     });
   }
 
-async function startRecord(config: recordOptions<eventWithTime>) {
+  // List all mimeTypes
+  const mimeTypes = [
+    "video/webm;codecs=avc1",
+    "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm;codecs=h264",
+    "video/webm",
+  ];
+
+  // Check if the browser supports any of the mimeTypes, 
+  // make sure to select the first one that is supported from the list
+  let mimeType = mimeTypes.find((mimeType) =>
+    MediaRecorder.isTypeSupported(mimeType)
+  );
+
+  console.log('best supported mimetype:', mimeType);
+
+  async function startMediaRecording(onStopCb: any) {
     try {
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // use below to combine multiple streams
-        // audioStream = new MediaStream([...userAudioStream.getAudioTracks()]);
-        audioRecorder = new MediaRecorder(audioStream);
-        audioRecorder.ondataavailable = async (e) => {
-            const audioChunk = await blobToDataURL(e.data)
-            audioChunks.push(audioChunk);
-            postMessage({
-                message: MessageName.EmitAudioChunk,
-                audioChunk
-            });
-        }
-        // XXX hack to force invoking 'RecordStarted' after audioChunk has been added
-        audioRecorder.onstop = () => setTimeout(() => stopRrwebAndPostMessage(), 100);
-        audioRecorder.start();
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        preferCurrentTab: true,
+        video: {
+          width: 1920,
+          height: 1080,
+          frameRate: 30,
+          resizeMode: 'crop-and-scale'
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        },
+      } as any);
     }
     catch (error) {
-        console.error('Error accessing microphone:', error);
+        console.error('Error accessing screen:', error);
     }
 
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
+      }
+      catch (error) {
+        console.error('Error accessing microphone:', error);
+      }
+      const mediaStream = new MediaStream([
+        ...(screenStream ? screenStream.getTracks() : []),
+        ...(micStream ? micStream.getAudioTracks() : [])
+      ]);
+        mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+        mediaRecorder.ondataavailable = async (e) => {
+            console.debug('received chunk of type:', e.data.type);
+            const mediaChunk = await blobToDataURL(e.data)
+            mediaChunks.push(mediaChunk);
+            postMessage({
+                message: MessageName.EmitMediaChunk,
+                mediaChunk
+            });
+        }
+        // XXX hack to force invoking 'RecordStarted' after mediaChunk has been added
+        mediaRecorder.onstop = () => setTimeout(() => onStopCb(), 10);
+        mediaRecorder.start();
+  }
+
+  function stopMediaRecording() {
+    mediaRecorder?.stop();
+    micStream?.getTracks().forEach(track => track.stop());
+    screenStream?.getTracks().forEach(track => track.stop());
+  }
+
+async function startRecord(config: recordOptions<eventWithTime>) {
   events.length = 0;
   stopFn =
     record({
@@ -59,10 +110,15 @@ async function startRecord(config: recordOptions<eventWithTime>) {
       },
       ...config,
     }) || null;
+
   postMessage({
     message: MessageName.RecordStarted,
     startTimestamp: Date.now(),
   } as RecordStartedMessage);
+
+  setTimeout(async () => {
+    await startMediaRecording(() => stopRrwebAndPostMessage());  
+  }, 10);
 }
 
 const messageHandler = (
@@ -78,10 +134,9 @@ const messageHandler = (
       startRecord(data.config || {});
     },
     [MessageName.StopRecord]: () => {
-        if (audioRecorder && audioStream) {
-            audioRecorder.stop();
-            audioStream.getTracks().forEach(track => track.stop());
-            // stopRrwebAndPostMessage() will be called from audioRecorder.onstop
+        if (mediaRecorder) {
+            stopMediaRecording();
+            // stopRrwebAndPostMessage() will be called from mediaRecorder.onstop
         }
         else {
             stopRrwebAndPostMessage();
@@ -103,7 +158,7 @@ function stopRrwebAndPostMessage() {
       postMessage({
         message: MessageName.RecordStopped,
         events,
-        audioChunks,
+        mediaChunks,
         endTimestamp: Date.now(),
       });
       window.removeEventListener('message', messageHandler);

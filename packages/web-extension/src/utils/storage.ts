@@ -7,15 +7,15 @@ import type { Session } from '~/types';
  */
 
 const EventStoreName = 'events';
-const AudioChunkStoreName = 'audioChunks';
+const MediaChunkStoreName = 'mediaChunks';
 type EventData = {
   id: string;
   events: eventWithTime[];
 };
 
-type AudioChunkData = {
+type MediaChunkData = {
     id: string;
-    audioChunks: Blob[];
+    mediaChunks: Blob[];
   };
 
 export async function getEventStore() {
@@ -29,10 +29,10 @@ export async function getEventStore() {
   });
 }
 
-export async function getAudioChunkStore() {
-    return openDB<AudioChunkData>(AudioChunkStoreName, 1, {
+export async function getMediaChunkStore() {
+    return openDB<MediaChunkData>(MediaChunkStoreName, 1, {
       upgrade(db) {
-        db.createObjectStore(AudioChunkStoreName, {
+        db.createObjectStore(MediaChunkStoreName, {
           keyPath: 'id',
           autoIncrement: false,
         });
@@ -46,10 +46,10 @@ export async function getEvents(id: string) {
   return data.events;
 }
 
-export async function getAudioChunks(id: string) {
-    const db = await getAudioChunkStore();
-    const data = (await db.get(AudioChunkStoreName, id)) as AudioChunkData;
-    return data.audioChunks;
+export async function getMediaChunks(id: string) {
+    const db = await getMediaChunkStore();
+    const data = (await db.get(MediaChunkStoreName, id)) as MediaChunkData;
+    return data.mediaChunks;
 }
 
 const SessionStoreName = 'sessions';
@@ -67,11 +67,11 @@ export async function getSessionStore() {
   });
 }
 
-export async function saveSession(session: Session, events: eventWithTime[], audioChunks: Blob[]) {
+export async function saveSession(session: Session, events: eventWithTime[], mediaChunks: Blob[]) {
   const eventStore = await getEventStore();
   await eventStore.put(EventStoreName, { id: session.id, events });
-  const audioChunkStore = await getAudioChunkStore();
-  await audioChunkStore.put(AudioChunkStoreName, { id: session.id, audioChunks });
+  const mediaChunkStore = await getMediaChunkStore();
+  await mediaChunkStore.put(MediaChunkStoreName, { id: session.id, mediaChunks });
   const store = await getSessionStore();
   await store.add(SessionStoreName, session);
 }
@@ -89,21 +89,21 @@ export async function getAllSessions() {
 
 export async function deleteSession(id: string) {
   const eventStore = await getEventStore();
-  const audioChunkStore = await getAudioChunkStore();
+  const mediaChunkStore = await getMediaChunkStore();
   const sessionStore = await getSessionStore();
   await Promise.all([
     eventStore.delete(EventStoreName, id),
-    audioChunkStore.delete(AudioChunkStoreName, id),
+    mediaChunkStore.delete(MediaChunkStoreName, id),
     sessionStore.delete(SessionStoreName, id),
   ]);
 }
 
 export async function deleteSessions(ids: string[]) {
   const eventStore = await getEventStore();
-  const audioChunkStore = await getAudioChunkStore();
+  const mediaChunkStore = await getMediaChunkStore();
   const sessionStore = await getSessionStore();
   const eventTransition = eventStore.transaction(EventStoreName, 'readwrite');
-  const audioChunkTransition = audioChunkStore.transaction(AudioChunkStoreName, 'readwrite');
+  const mediaChunkTransition = mediaChunkStore.transaction(MediaChunkStoreName, 'readwrite');
   const sessionTransition = sessionStore.transaction(
     SessionStoreName,
     'readwrite',
@@ -111,20 +111,20 @@ export async function deleteSessions(ids: string[]) {
   const promises = [];
   for (const id of ids) {
     promises.push(eventTransition.store.delete(id));
-    promises.push(audioChunkTransition.store.delete(id));
+    promises.push(mediaChunkTransition.store.delete(id));
     promises.push(sessionTransition.store.delete(id));
   }
   await Promise.all(promises).then(() => {
-    return Promise.all([eventTransition.done, audioChunkTransition.done, sessionTransition.done]);
+    return Promise.all([eventTransition.done, mediaChunkTransition.done, sessionTransition.done]);
   });
 }
 
 export async function downloadSessions(ids: string[]) {
   for (const sessionId of ids) {
     const events = await getEvents(sessionId);
-    const audioChunks = await getAudioChunks(sessionId);
+    const mediaChunks = await getMediaChunks(sessionId);
     const session = await getSession(sessionId);
-    const blob = new Blob([JSON.stringify({ session, events, audioChunks }, null, 2)], {
+    const blob = new Blob([JSON.stringify({ session, events, mediaChunks }, null, 2)], {
       type: 'application/json',
     });
 

@@ -10,30 +10,33 @@ import {
   BreadcrumbLink,
   Center,
 } from '@chakra-ui/react';
-import { getEvents, getSession, getAudioChunks } from '~/utils/storage';
+import { getEvents, getSession, getMediaChunks } from '~/utils/storage';
 
-function dataURLToBlob(dataURL: string) {
-    // Split the Data URL into two parts: the MIME type and the base64 data
-    const [header, base64Data] = dataURL.split(',');
-    // Determine the MIME type from the header
-    const mimeString = header.split(':')[1].split(';')[0];
-    // Decode the base64 data
-    const byteString = atob(base64Data);
-    // Create an array of byte values
-    const byteNumbers = new Array(byteString.length);
-    for (let i = 0; i < byteString.length; i++) {
-      byteNumbers[i] = byteString.charCodeAt(i);
-    }
-    // Convert the byte values to an Uint8Array
-    const uint8Array = new Uint8Array(byteNumbers);
-    // Create and return the Blob
-    return new Blob([uint8Array], { type: mimeString });
+async function dataURLToBlob(dataURL: string) {
+    return await (await fetch(dataURL)).blob(); 
+
+    // // Split the Data URL into two parts: the MIME type and the base64 data
+    // const [header, base64Data] = dataURL.split(',');
+    // // Determine the MIME type from the header
+    // const mimeString = header.split(':')[1].split(';')[0];
+    // // Decode the base64 data
+    // const byteString = atob(base64Data);
+    // // Create an array of byte values
+    // const byteNumbers = new Array(byteString.length);
+    // for (let i = 0; i < byteString.length; i++) {
+    //   byteNumbers[i] = byteString.charCodeAt(i);
+    // }
+    // // Convert the byte values to an Uint8Array
+    // const uint8Array = new Uint8Array(byteNumbers);
+    // // Create and return the Blob
+    // return Promise.resolve(new Blob([uint8Array], { type: mimeString }));
 }
 
 export default function Player() {
   const playerElRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Replayer | null>(null);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+//   const mediaPlayerElRef = useRef<HTMLDivElement>(null);
+  const mediaPlayerRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   
   const { sessionId } = useParams();
   const [sessionName, setSessionName] = useState('');
@@ -47,14 +50,29 @@ export default function Player() {
       .catch((err) => {
         console.error(err);
       });
-    getAudioChunks(sessionId).then(audioChunks => {
-        const blob = new Blob(audioChunks.map(str => dataURLToBlob(str as any)), { type: 'audio/wav' });
-        const audio = new Audio(URL.createObjectURL(blob));
+    getMediaChunks(sessionId).then(async mediaChunks => {
+        // if (!mediaPlayerElRef.current) return;
+
+        const promises = mediaChunks.map(async str => await dataURLToBlob(str as any));
+        const blobs = await Promise.all(promises);
+        const mimeString = blobs.length > 0 ? blobs[0].type : 'video/webm;codecs=vp8,opus';
+        const blob = new Blob(blobs, { type: mimeString });
+        const mediaUrl = URL.createObjectURL(blob);
+
+        // const media = new Audio(mediaUrl);
+        const media: HTMLVideoElement = document.createElement('video');
+        media.src = mediaUrl;
+        media.controls = true;
+        // media.crossOrigin = 'anonymous';  
+        // media.autoplay = true;
+        media.load();
+        // media.srcObject = blob;
         // Hide the audio element
-        audio.style.display = 'none';        
+        // media.style.display = 'none';
         // Add the audio element to the DOM
-        audioPlayerRef.current = audio;
-        document.body.appendChild(audioPlayerRef.current);
+        mediaPlayerRef.current = media;
+        document.body.appendChild(media);
+        // document.body.appendChild(mediaPlayerRef.current);
     })
     getEvents(sessionId)
       .then((events) => {
@@ -78,19 +96,24 @@ export default function Player() {
         playerRef.current.addEventListener('ui-update-player-state', (e: any) => {
             // console.debug('ui-update-player-state:', e);
             seekAudio = true;
-            if (audioPlayerRef.current) {
+            if (mediaPlayerRef.current) {
                 if (e.payload === 'paused') {
-                    audioPlayerRef.current.pause();
+                    mediaPlayerRef.current.pause();
                 }
                 else {
-                    audioPlayerRef.current.play();
+                    // console.log(mediaPlayerRef.current);
+                    // mediaPlayerRef.current.play();
                 }
             }
         })
+        // playerRef.current.addEventListener('ui-update-progress', (e: any) => {
+        //     console.debug('ui-update-progress:', e.payload); // fractional progress
+        // })
         playerRef.current.addEventListener('ui-update-current-time', (e: any) => {
-            if (seekAudio && audioPlayerRef.current) {
+            // console.debug('ui-update-current-time:', e);
+            if (seekAudio && mediaPlayerRef.current) {
                 console.debug('seeking audio to:', e.payload);
-                audioPlayerRef.current.currentTime = e.payload/1000;
+                mediaPlayerRef.current.currentTime = e.payload/1000;
                 seekAudio = false;
             }
         })
@@ -100,7 +123,7 @@ export default function Player() {
       });
     return () => {
       playerRef.current?.pause();
-      audioPlayerRef.current?.pause();
+      mediaPlayerRef.current?.pause();
     };
   }, [sessionId]);
 
@@ -115,7 +138,11 @@ export default function Player() {
         </BreadcrumbItem>
       </Breadcrumb>
       <Center>
-        <Box id={sessionName} ref={playerElRef}></Box>
+        <Box ref={playerElRef}></Box>
+        {/* <br/>
+        <video width="750" height="500" controls >
+            <source src={mediaPlayerRef.current?.src} type="video/webm;codecs=vp8,opus"/>
+        </video> */}
       </Center>
     </>
   );

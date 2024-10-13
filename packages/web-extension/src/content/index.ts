@@ -11,7 +11,7 @@ import {
   type RecordStoppedMessage,
   MessageName,
   type EmitEventMessage,
-  type EmitAudioChunk,
+  type EmitMediaChunk,
 } from '~/types';
 import Channel from '~/utils/channel';
 import { isInCrossOriginIFrame } from '~/utils';
@@ -48,9 +48,9 @@ void (() => {
 
 async function initMainPage() {
   let bufferedEvents: eventWithTime[] = [];
-  let bufferedAudioChunks: Blob[] = [];
+  let bufferedMediaChunks: Blob[] = [];
   let newEvents: eventWithTime[] = [];
-  let newAudioChunks: Blob[] = [];
+  let newMediaChunks: Blob[] = [];
   let startResponseCb: ((response: RecordStartedMessage) => void) | undefined =
     undefined;
   channel.provide(ServiceName.StartRecord, async () => {
@@ -62,13 +62,13 @@ async function initMainPage() {
     });
   });
   channel.provide(ServiceName.ResumeRecord, async (params) => {
-    const { events, audioChunks, pausedTimestamp } = params as {
+    const { events, mediaChunks, pausedTimestamp } = params as {
       events: eventWithTime[];
-      audioChunks: Blob[];
+      mediaChunks: Blob[];
       pausedTimestamp: number;
     };
     bufferedEvents = events;
-    bufferedAudioChunks = audioChunks;
+    bufferedMediaChunks = mediaChunks;
     // TODO implement pause?
     startRecord();
     return new Promise((resolve) => {
@@ -92,14 +92,14 @@ async function initMainPage() {
         const newSession = generateSession();
         response.session = newSession;
         bufferedEvents = [];
-        bufferedAudioChunks = []
+        bufferedMediaChunks = []
         newEvents = [];
-        newAudioChunks = []
+        newMediaChunks = []
         resolve(response);
         // clear cache
         void Browser.storage.local.set({
           [LocalDataKey.bufferedEvents]: [],
-          [LocalDataKey.bufferedAudioChunks]: [],
+          [LocalDataKey.bufferedMediaChunks]: [],
         });
       };
     });
@@ -110,13 +110,13 @@ async function initMainPage() {
       stopResponseCb = (response: RecordStoppedMessage) => {
         stopResponseCb = undefined;
         bufferedEvents = [];
-        bufferedAudioChunks = []
+        bufferedMediaChunks = []
         newEvents = [];
-        newAudioChunks = [];
+        newMediaChunks = [];
         resolve(response);
         void Browser.storage.local.set({
           [LocalDataKey.bufferedEvents]: response.events,
-          [LocalDataKey.bufferedAudioChunks]: response.audioChunks,
+          [LocalDataKey.bufferedMediaChunks]: response.mediaChunks,
         });
       };
     });
@@ -150,16 +150,16 @@ async function initMainPage() {
           ...data,
         };
         newData.events = bufferedEvents.concat(data.events);
-        newData.audioChunks = bufferedAudioChunks.concat(data.audioChunks);
+        newData.mediaChunks = bufferedMediaChunks.concat(data.mediaChunks);
         // newData.events = bufferedEvents.concat(newEvents); // XXX experimenting
-        // newData.audioChunks = bufferedAudioChunks.concat(newAudioChunks);
+        // newData.mediaChunks = bufferedMediaChunks.concat(newMediaChunks);
         console.debug('RecordStopped');
         stopResponseCb(newData);
       } else if (event.data.message === MessageName.EmitEvent) {
         newEvents.push((event.data as EmitEventMessage).event);
-      } else if (event.data.message === MessageName.EmitAudioChunk)
-        console.debug('EmitAudioChunk');
-        newAudioChunks.push((event.data as EmitAudioChunk).audioChunk);
+      } else if (event.data.message === MessageName.EmitMediaChunk)
+        console.debug('EmitMediaChunk');
+        newMediaChunks.push((event.data as EmitMediaChunk).mediaChunk);
       }
   );
 
@@ -170,17 +170,17 @@ async function initMainPage() {
   ) {
     startRecord();
     bufferedEvents = localData[LocalDataKey.bufferedEvents] || [];
-    bufferedAudioChunks = localData[LocalDataKey.bufferedAudioChunks] || [];
+    bufferedMediaChunks = localData[LocalDataKey.bufferedMediaChunks] || [];
   }
 
   // Before unload pages, cache the new events in the local storage.
   window.addEventListener('beforeunload', (event) => {
-    if (!newEvents.length && !newAudioChunks.length) return;
+    if (!newEvents.length && !newMediaChunks.length) return;
     event.preventDefault();
     console.debug('beforeunload called');
     void Browser.storage.local.set({
       [LocalDataKey.bufferedEvents]: bufferedEvents.concat(newEvents),
-      [LocalDataKey.bufferedAudioChunks]: bufferedAudioChunks.concat(newAudioChunks),
+      [LocalDataKey.bufferedMediaChunks]: bufferedMediaChunks.concat(newMediaChunks),
     });
   });
 }
@@ -210,10 +210,14 @@ async function initCrossOriginIframe() {
 }
 
 function startRecord() {
+    // debugger;
+    console.debug('injecting inject.js');
+    
   const scriptEl = document.createElement('script');
   scriptEl.src = Browser.runtime.getURL('content/inject.js');
   document.documentElement.appendChild(scriptEl);
   scriptEl.onload = () => {
+    console.debug('removing inject.js');
     document.documentElement.removeChild(scriptEl);
   };
 }

@@ -15,7 +15,7 @@ export type Settings = {
 export enum LocalDataKey {
   recorderStatus = 'recorder_status',
   bufferedEvents = 'buffered_events',
-  bufferedAudioChunks = 'buffered_audio_chunks'
+  bufferedMediaChunks = 'buffered_media_chunks'
 }
 
 export type LocalData = {
@@ -27,7 +27,7 @@ export type LocalData = {
     pausedTimestamp?: number;
   };
   [LocalDataKey.bufferedEvents]: eventWithTime[];
-  [LocalDataKey.bufferedAudioChunks]: Blob[];
+  [LocalDataKey.bufferedMediaChunks]: Blob[];
 };
 
 export enum RecorderStatus {
@@ -68,7 +68,7 @@ export enum MessageName {
   StopRecord = 'rrweb-extension-stop-record',
   RecordStopped = 'rrweb-extension-record-stopped',
   EmitEvent = 'rrweb-extension-emit-event',
-  EmitAudioChunk = 'rrweb-extension-emit-audio-chunk',
+  EmitMediaChunk = 'rrweb-extension-emit-audio-chunk',
 }
 
 export type RecordStartedMessage = {
@@ -79,7 +79,7 @@ export type RecordStartedMessage = {
 export type RecordStoppedMessage = {
   message: MessageName.RecordStopped;
   events: eventWithTime[];
-  audioChunks: Blob[];
+  mediaChunks: Blob[];
   endTimestamp: number;
   session?: Session;
 };
@@ -89,7 +89,7 @@ export type EmitEventMessage = {
   event: eventWithTime;
 };
 
-export type EmitAudioChunk = {
-    message: MessageName.EmitAudioChunk;
-    audioChunk: Blob;
+export type EmitMediaChunk = {
+    message: MessageName.EmitMediaChunk;
+    mediaChunk: Blob;
   };

@@ -110,7 +110,7 @@ export function App() {
                       if (res.session) {
                         console.debug('stop recording clicked:', res);
                         setNewSession(res.session);
-                        await saveSession(res.session, res.events, res.audioChunks).catch(
+                        await saveSession(res.session, res.events, res.mediaChunks).catch(
                           (e) => {
                             setErrorMessage((e as { message: string }).message);
                           },
@@ -124,12 +124,14 @@ export function App() {
                 });
               } else {
                 // start recording
+                console.debug('popup: start recording clicked');
                 void channel.getCurrentTabId().then((tabId) => {
                   if (tabId === -1) return;
                   void channel
                     .requestToTab(tabId, ServiceName.StartRecord, {})
                     .then(async (res: RecordStartedMessage | undefined) => {
                       if (res) {
+                        console.debug('popup: start message:', res);
                         setStatus(RecorderStatus.RECORDING);
                         setStartTime(res.startTimestamp);
                         const status: LocalData[LocalDataKey.recorderStatus] = {
