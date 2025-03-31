@@ -23,7 +23,8 @@ import { Timer } from './Timer';
 import { pauseRecording, resumeRecording } from '~/utils/recording';
 import { saveSession } from '~/utils/storage';
 const RECORD_BUTTON_SIZE = 3;
-
+const BACKEND_API_URL = 'http://127.0.0.1:8000/create-video'; // Replace with your actual API URL
+// const BACKEND_API_URL = 'http://localhost:8000/get';
 const channel = new Channel();
 
 export function App() {
@@ -31,6 +32,8 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [startTime, setStartTime] = useState(0);
   const [newSession, setNewSession] = useState<Session | null>(null);
+  const [events, setEvents] = useState<any[]>([]); // Add this line to store events
+
 
   useEffect(() => {
     void Browser.storage.local.get(LocalDataKey.recorderStatus).then((data) => {
@@ -44,6 +47,65 @@ export function App() {
       else if (startTimestamp) setStartTime(startTimestamp);
     });
   }, []);
+
+  const saveRecordingData = async (session: Session, events: any[], mediaChunks: Blob[] | string[]) => {
+    try {
+      console.log("Sending data to backend", {
+        session,
+        eventsCount: events.length,
+        mediaChunksCount: mediaChunks.length
+      });
+
+      const response = await fetch(BACKEND_API_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          session: session,
+          events: events,
+          mediaChunks: mediaChunks
+        }), 
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Backend response error:', response.status, errorText);
+        throw new Error(`Server responded with ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log("Response from backend:", data);
+      
+      if (!data.videoUrl || !data.transcriptUrl || !data.timestampUrl) {
+        console.error('Missing required URLs in response:', data);
+        throw new Error('Backend response missing required URLs');
+      }
+
+      return {
+        videoUrl: data.videoUrl,
+        transcriptUrl: data.transcriptUrl,
+        timestampUrl: data.timestampUrl
+      };
+    } catch (error) {
+      console.error('Error sending recording data:', error);
+      setErrorMessage(`Failed to send recording data to backend: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return null;
+    }
+  };
+
+  const redirectToWebsite = (videoUrl: string, transcriptUrl: string, timestampUrl: string) => {
+    if (!videoUrl || !transcriptUrl || !timestampUrl) {
+      console.error('Missing required URLs:', { videoUrl, transcriptUrl, timestampUrl });
+      setErrorMessage('Failed to get required URLs from backend');
+      return;
+    }
+    
+    console.log("Video URL:", videoUrl);
+    console.log("Transcript URL:", transcriptUrl);
+    console.log("Timestamp URL:", timestampUrl);
+    
+    const websiteUrl = `http://localhost:3000/editor?videoUrl=${encodeURIComponent(videoUrl)}&transcriptUrl=${encodeURIComponent(transcriptUrl)}&timestampUrl=${encodeURIComponent(timestampUrl)}`;
+    void Browser.tabs.create({ url: websiteUrl });
+  };
 
   return (
     <Flex direction="column" w={300} padding="5%">
@@ -116,6 +178,18 @@ export function App() {
                           },
                         );
                         channel.emit(EventName.SessionUpdated, {});
+                        
+                        try {
+                          const result = await saveRecordingData(res.session, res.events, res.mediaChunks);
+                          if (result && result.videoUrl && result.transcriptUrl && result.timestampUrl) {
+                            // Redirect to website after session is saved and events are sent
+                            redirectToWebsite(result.videoUrl, result.transcriptUrl, result.timestampUrl);
+                          } else {
+                            setErrorMessage('Failed to get required URLs from backend');
+                          }
+                        } catch (error) {
+                          setErrorMessage(`Error processing recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
                       }
                     })
                     .catch((error: Error) => {
@@ -223,19 +297,6 @@ export function App() {
           </CircleButton>
         )}
       </Flex>
-      {newSession && (
-        <Text>
-          <Text as="b">New Session: </Text>
-          <Link
-            href={Browser.runtime.getURL(
-              `pages/index.html#/session/${newSession.id}`,
-            )}
-            isExternal
-          >
-            {newSession.name}
-          </Link>
-        </Text>
-      )}
       {errorMessage !== '' && (
         <Text color="red.500" fontSize="md">
           {errorMessage}
